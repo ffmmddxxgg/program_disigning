@@ -9,29 +9,25 @@
 #include "stb_image.h"
 
 // 着色器源码
-//从RGB颜色改为UV纹理坐标
 const char* vertexShaderSource = "#version 330 core\n"
     "layout (location = 0) in vec3 aPos;\n"
-    "layout (location = 1) in vec2 aTexCoord;\n" // 这里变成了 vec2 (u, v)
-    "out vec2 TexCoord;\n"
+    "layout (location = 1) in vec3 aColor;\n"
+    "out vec3 ourColor;\n"
     "uniform mat4 projection;\n"
     "uniform mat4 view;\n"
     "void main() {\n"
     "   gl_Position = projection * view * vec4(aPos, 1.0);\n"
-    "   TexCoord = aTexCoord;\n" // 传给下一个环节
+    "   ourColor = aColor;\n"
     "}\n\0";
 
 const char* fragmentShaderSource = "#version 330 core\n"
     "out vec4 FragColor;\n"
-    "in vec2 TexCoord;\n"
-    "uniform sampler2D cubeTexture;\n" // 接收绑定的贴图
+    "in vec3 ourColor;\n"
     "void main() {\n"
-    "   FragColor = texture(cubeTexture, TexCoord);\n" // 从贴图中吸取颜色
+    "   FragColor = vec4(ourColor, 1.0f);\n"
     "}\n\0";
 
 GLuint cubeVAO, cubeVBO;
-GLuint cubeTexture;     // 魔方贴图
-GLuint blackBodyTexture; // 1x1 纯黑纹理，用于填充间隙
 GLuint shaderProgram;
 GLint modelLoc, viewLoc, projLoc;
 
@@ -40,54 +36,12 @@ void setupColoredCube() {
     glGenBuffers(1, &cubeVBO);
     glBindVertexArray(cubeVAO);
     glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-    
-    // 27块 * 36个顶点/块(6面*6顶点) * 5个浮点数(xyz+uv)
-    // 黑色方块体也用此 VAO/VBO，尺寸相同
-    glBufferData(GL_ARRAY_BUFFER, 27 * 36 * 5 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
-    
-    // 坐标通道 0：占 3 个位置，跨度是 5
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    // 先分配一个足够大的缓冲区，绘制时再填充具体数据
+    glBufferData(GL_ARRAY_BUFFER, 27 * 36 * 6 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    
-    // 贴图通道 1：占 2 个位置，跨度是 5，从第 3 个位置开始读
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-}
-
-// 创建 1x1 纯黑不透明纹理，用作方块体的颜色
-void loadBlackBodyTexture() {
-    unsigned char blackPixel[4] = {0, 0, 0, 255}; // RGBA 纯黑
-    glGenTextures(1, &blackBodyTexture);
-    glBindTexture(GL_TEXTURE_2D, blackBodyTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, blackPixel);
-}
-
-void loadCubeTexture(const char* imagePath) {
-    glGenTextures(1, &cubeTexture);
-    glBindTexture(GL_TEXTURE_2D, cubeTexture);
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    // 魔方贴图建议用 GL_NEAREST 保持清晰边界，或者 GL_LINEAR
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    stbi_set_flip_vertically_on_load(true);
-    int width, height, nrChannels;
-    unsigned char *data = stbi_load(imagePath, &width, &height, &nrChannels, 0);
-    
-    if (data) {
-        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        printf("Failed to load cube texture: %s\n", imagePath);
-    }
-    stbi_image_free(data);
 }
 
 static void checkShaderCompile(GLuint shader) {
@@ -152,10 +106,11 @@ void showInstructions() {
            "==========================\n");
 }
 
-// 不再传入 r,g,b，而是传入 colorIdx (0到5)
+// 注意：orient 参数是一维 float 数组指针，按行主序存储 3x3 矩阵
+// 改进：直接把面颜色 (r,g,b) 传进来，严格按 [x,y,z,r,g,b] 交错格式组装
 static void addFaceVertices(float* buf, int* bufIdx,
                             const float* pos, const float* orient,
-                            int faceDir, int colorIdx) {
+                            int faceDir, float r, float g, float b) {
     float p[4][3]; // 四个局部坐标顶点
 
     switch (faceDir) {
@@ -198,20 +153,7 @@ static void addFaceVertices(float* buf, int* bufIdx,
         default: return;
     }
 
-    // === 核心贴图裁剪计算 ===
-    // 假设图集是 1行6列。每个贴图占 1/6 (约 0.166) 的宽度
-    float unitWidth = 1.0f / 6.0f;
-    float u_start = colorIdx * unitWidth;
-    float u_end = (colorIdx + 1) * unitWidth;
-
-    // 根据原代码坐标顺序，映射 UV 坐标 (左下, 右下, 右上, 左上)
-    float uv[4][2] = {
-        {u_start, 0.0f}, // p[0] 左下角
-        {u_end,   0.0f}, // p[1] 右下角
-        {u_end,   1.0f}, // p[2] 右上角
-        {u_start, 1.0f}  // p[3] 左上角
-    };
-
+    // 1. 先计算出变换后的 4 个世界坐标顶点
     float wp[4][3];
     for (int v = 0; v < 4; v++) {
         wp[v][0] = orient[0]*p[v][0] + orient[1]*p[v][1] + orient[2]*p[v][2] + pos[0];
@@ -219,81 +161,59 @@ static void addFaceVertices(float* buf, int* bufIdx,
         wp[v][2] = orient[6]*p[v][0] + orient[7]*p[v][1] + orient[8]*p[v][2] + pos[2];
     }
 
+    // 2. 按标准的两个三角形索引 (0-1-2 和 0-2-3) 压入 VBO 数组
     int indices[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
         int v = indices[i];
+        // 位置属性: x, y, z
         buf[(*bufIdx)++] = wp[v][0];
         buf[(*bufIdx)++] = wp[v][1];
         buf[(*bufIdx)++] = wp[v][2];
-        // 压入 uv 而不是 rgb
-        buf[(*bufIdx)++] = uv[v][0];
-        buf[(*bufIdx)++] = uv[v][1];
+        // 颜色属性: r, g, b
+        buf[(*bufIdx)++] = r;
+        buf[(*bufIdx)++] = g;
+        buf[(*bufIdx)++] = b;
     }
 }
 
 void drawCube() {
-    const int maxVertices = 27 * 36;
-    float* vertices = (float*)malloc(maxVertices * 5 * sizeof(float));
+    const int maxVertices = 27 * 36;  // 最多 972 个顶点 (27块 * 最多外露6面 * 每面6个顶点)
+    // 每个顶点包含 6 个 float (x,y,z,r,g,b)
+    float* vertices = (float*)malloc(maxVertices * 6 * sizeof(float)); 
+    
+    int bufIdx = 0;      // 记录当前填充到 vertices 数组的第几个 float
+    int vertexCount = 0; // 记录 OpenGL 实际需要绘制的顶点个数
 
-    glUseProgram(shaderProgram);
+    for (int i = 0; i < 27; i++) {
+        float spacing = 1.05f;
+        float pos[3] = { cube[i].x * spacing, cube[i].y * spacing, cube[i].z * spacing };
+        float* orient = &cube[i].orient[0][0];
+
+        for (int f = 0; f < 6; f++) {
+            int colorIdx = cube[i].faceColors[f];
+            if (colorIdx == -1) continue;   // 内部面跳过
+
+            float r, g, b;
+            getFaceColor(colorIdx, &r, &g, &b);
+
+            // 传入颜色，函数内部会处理好所有格式
+            addFaceVertices(vertices, &bufIdx, pos, orient, f, r, g, b);
+            
+            vertexCount += 6; // 每成功处理一个面，新增 6 个顶点
+        }
+    }
+
     glBindVertexArray(cubeVAO);
     glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-
-    // =====================================================
-    // 第一遍：绘制内部面（colorIdx == -1）用黑色纹理
-    // 这些面原本被跳过不渲染，导致间隙处能透视到对面
-    // 现在把它们画出来，用黑色填充，阻挡透视
-    // =====================================================
-    int bufIdx = 0;
-    int vertexCount = 0;
-
-    for (int i = 0; i < 27; i++) {
-        float spacing = 1.05f;
-        float pos[3] = { cube[i].x * spacing, cube[i].y * spacing, cube[i].z * spacing };
-        float* orient = &cube[i].orient[0][0];
-
-        for (int f = 0; f < 6; f++) {
-            int colorIdx = cube[i].faceColors[f];
-            if (colorIdx != -1) continue; // 只画内部面
-
-            // 用 addFaceVertices 生成顶点，colorIdx=0（UV无所谓，黑纹理覆盖）
-            addFaceVertices(vertices, &bufIdx, pos, orient, f, 0);
-            vertexCount += 6;
-        }
-    }
-
-    glBindTexture(GL_TEXTURE_2D, blackBodyTexture);
+    
+    // bufIdx 正好是写入的 float 总数，乘以 sizeof(float) 即为字节数
     glBufferSubData(GL_ARRAY_BUFFER, 0, bufIdx * sizeof(float), vertices);
-    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
-
-    // =====================================================
-    // 第二遍：绘制外部贴图面（colorIdx >= 0）用彩色贴图
-    // 内部面和外部面在不同朝向，不存在深度冲突
-    // =====================================================
-    bufIdx = 0;
-    vertexCount = 0;
-
-    for (int i = 0; i < 27; i++) {
-        float spacing = 1.05f;
-        float pos[3] = { cube[i].x * spacing, cube[i].y * spacing, cube[i].z * spacing };
-        float* orient = &cube[i].orient[0][0];
-
-        for (int f = 0; f < 6; f++) {
-            int colorIdx = cube[i].faceColors[f];
-            if (colorIdx == -1) continue; // 只画外部面
-
-            addFaceVertices(vertices, &bufIdx, pos, orient, f, colorIdx);
-            vertexCount += 6;
-        }
-    }
-
-    glBindTexture(GL_TEXTURE_2D, cubeTexture);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, bufIdx * sizeof(float), vertices);
+    
+    // 这里的 vertexCount 是标准的顶点数量（而不是 float 的数量）
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
 
     free(vertices);
 }
-
 
 
 // --- 新增：HUD 专用的全局变量和着色器 ---

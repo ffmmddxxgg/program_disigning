@@ -4,6 +4,7 @@
 #include "input.h"
 #include "math3d.h"
 #include "render.h"
+#include <windows.h>
 
 // 注意：这里不再定义 cube，cube 的定义在 cube.c 中
 
@@ -32,7 +33,30 @@ int main() {
     setupColoredCube();
     compileShaders();
     showInstructions();
-    setupHUD("tips.png");
+
+    loadCubeTexture("atlas.png"); // 加载魔方贴图
+    loadBlackBodyTexture();        // 创建黑色方块体纹理（填充间隙用）
+
+    // 启动时弹出操作说明对话框，用户点击确定后进入渲染
+    MessageBoxW(NULL,
+        L"魔方控制说明\n\n"
+        L"【操作键位】\n"
+        L"  Q / E : 旋转 上 / 下 面\n"
+        L"  A / D : 旋转 左 / 右 面\n"
+        L"  W / S : 旋转 前 / 后 面\n"
+        L"\n"
+        L"【方向控制】\n"
+        L"  默认按下  : 顺时针旋转\n"
+        L"  按住Shift : 逆时针旋转\n"
+        L"\n"
+        L"【视角控制】\n"
+        L"  鼠标左键拖拽 : 旋转观察视角\n"
+        L"  ESC 键       : 退出程序",
+        L"操作指南",
+        MB_OK | MB_ICONINFORMATION
+    );
+
+    
 
     while (!glfwWindowShouldClose(window)) {
         // 如果使用了 key_callback，这里就不再需要调用 scanKeyboard(window);
@@ -50,7 +74,6 @@ int main() {
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, view);
 
         drawCube();
-        drawHUD();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
