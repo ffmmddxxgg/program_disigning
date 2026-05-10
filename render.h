@@ -13,4 +13,8 @@ void showInstructions(void);
 void drawCube(void);
 void setupHUD(const char* imagePath);
 void drawHUD();
+
+void loadCubeTexture(const char* imagePath);
+void loadBlackBodyTexture(void);
+
 #endif

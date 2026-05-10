@@ -13,12 +13,16 @@
                 "${workspaceFolder}/input.c",
                 "${workspaceFolder}/math3d.c",
                 "${workspaceFolder}/render.c",
+                "${workspaceFolder}/zoom.c",
+                "${workspaceFolder}/audio.c",
+                "${workspaceFolder}/animation.c",
                 "-o",
                 "${workspaceFolder}/main.exe",
                 "-L", "C:\\msys64\\mingw64\\lib",   // 添加库搜索路径
                 "-lglfw3",
                 "-lopengl32",
-                "-lgdi32"
+                "-lgdi32",
+                "-lwinmm"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"          // 改为工作区根目录

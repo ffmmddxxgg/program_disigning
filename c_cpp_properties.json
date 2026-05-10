@@ -3,10 +3,9 @@
         {
             "name": "Win32",
             "includePath": [
+                "${workspaceFolder}",
                 "${workspaceFolder}/**",
-                "C:/msys64/mingw64/include",
-                "C:/msys64/mingw64/include/GLFW",
-                "C:/msys64/mingw64/include/glad"
+                "C:/msys64/mingw64/include"
             ],
             "defines": ["_DEBUG", "UNICODE", "_UNICODE"],
             "compilerPath": "C:/msys64/mingw64/bin/gcc.exe",

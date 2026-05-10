@@ -23,6 +23,7 @@ extern SubCube cube[27];
 extern int isCubeBusy; 
 
 void initMagicCube(void);
+void resetMagicCube(void);
 void rotateLayer(int axis, int layer, int dir);
 void getFaceColor(int faceDir, float* r, float* g, float* b);
 

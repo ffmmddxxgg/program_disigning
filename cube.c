@@ -100,3 +100,30 @@ void rotateLayer(int axis, int layer, int dir) {
     // 【防撕裂关键】：处理完毕，解锁
     isCubeBusy = 0; 
 }
+
+void resetMagicCube(void) {
+    isCubeBusy = 1;
+    int index = 0;
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int z = -1; z <= 1; z++) {
+                cube[index].x = x;
+                cube[index].y = y;
+                cube[index].z = z;
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j < 3; j++)
+                        cube[index].orient[i][j] = (i == j) ? 1.0f : 0.0f;
+
+                cube[index].faceColors[FACE_RIGHT]  = (x == 1)  ? FACE_RIGHT  : -1;
+                cube[index].faceColors[FACE_LEFT]   = (x == -1) ? FACE_LEFT   : -1;
+                cube[index].faceColors[FACE_TOP]    = (y == 1)  ? FACE_TOP    : -1;
+                cube[index].faceColors[FACE_BOTTOM] = (y == -1) ? FACE_BOTTOM : -1;
+                cube[index].faceColors[FACE_FRONT]  = (z == 1)  ? FACE_FRONT  : -1;
+                cube[index].faceColors[FACE_BACK]   = (z == -1) ? FACE_BACK   : -1;
+
+                index++;
+            }
+        }
+    }
+    isCubeBusy = 0;
+}
